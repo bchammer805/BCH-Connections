@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Puzzle For Arden - Connections</title>
+  <style>
+    :root { color-scheme: light; font-family: Arial, sans-serif; }
+    body { margin: 0; background: #f7f7f7; color: #121212; }
+    main { width: min(92vw, 620px); margin: 0 auto; padding: 32px 0 44px; text-align: center; }
+    #celebration { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: 5; }
+    #celebration-message { position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%) scale(.4) rotate(-5deg); color: #fff; background: #111; border: 7px solid #f9df6d; border-radius: 14px; padding: 18px 26px; box-shadow: 0 10px 0 #ba81c5, 0 18px 30px #0005; font-size: clamp(1.7rem, 8vw, 3.2rem); font-weight: 900; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; animation: pop 2.4s cubic-bezier(.2, 1.4, .4, 1) forwards; }
+    #disappointment-message { position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%) scale(.4); color: #fff; background: #4a4a4a; border: 7px solid #d6d6d6; border-radius: 14px; padding: 18px 26px; box-shadow: 0 10px 0 #888, 0 18px 30px #0005; font-size: clamp(1.5rem, 7vw, 2.8rem); font-weight: 900; text-align: center; white-space: nowrap; animation: wilt 2.7s ease-out forwards; }
+    #disappointment-message .sad-face { display: block; color: #f1c75b; font-size: clamp(3.5rem, 16vw, 7rem); line-height: .9; }
+    .confetti { position: absolute; top: -22px; width: 11px; height: 22px; border-radius: 2px; animation: fall 2.2s ease-out forwards; }
+    .balloon { position: absolute; bottom: -80px; width: 34px; height: 44px; border-radius: 50% 50% 45% 45%; animation: rise 2.4s ease-in forwards; }
+    .balloon::after { content: ''; position: absolute; top: 42px; left: 16px; width: 1px; height: 90px; background: currentColor; }
+    @keyframes pop { 15% { transform: translate(-50%, -50%) scale(1.08) rotate(2deg); } 30% { transform: translate(-50%, -50%) scale(1) rotate(0); } 82% { opacity: 1; } to { transform: translate(-50%, -50%) scale(.85) rotate(3deg); opacity: 0; } }
+    @keyframes wilt { 15% { transform: translate(-50%, -50%) scale(1.05) rotate(-2deg); } 30% { transform: translate(-50%, -50%) scale(1) rotate(0); } 82% { opacity: 1; } to { transform: translate(-50%, -50%) scale(.9) rotate(2deg); opacity: 0; } }
+    @keyframes fall { to { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
+    @keyframes rise { to { transform: translateY(-125vh) rotate(18deg); opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { #celebration-message, .confetti, .balloon { animation-duration: .01s; } }
+    h1 { margin: 0 0 8px; font-size: clamp(1.7rem, 5vw, 2.3rem); }
+    .instructions { margin: 0 0 22px; color: #555; }
+    #grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .word { min-height: 72px; border: 0; border-radius: 7px; background: #e8e8e8; color: #111; font-weight: 700; text-transform: uppercase; cursor: pointer; padding: 8px; }
+    .word:hover, .word.selected { background: #5a594e; color: white; }
+    .word:focus-visible, button:focus-visible { outline: 3px solid #4b78c2; outline-offset: 2px; }
+    .word:disabled { cursor: default; }
+    #groups { display: grid; gap: 8px; margin-bottom: 20px; }
+    .group { padding: 13px; border-radius: 7px; font-weight: 700; }
+    .group strong { display: block; text-transform: uppercase; font-size: .82rem; margin-bottom: 4px; }
+    .yellow { background: #f9df6d; } .green { background: #a0c35a; } .blue { background: #b0c4ef; } .purple { background: #ba81c5; }
+    #status { min-height: 24px; margin: 17px 0 12px; font-weight: 700; }
+    .controls { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+    .controls button { border: 1px solid #111; border-radius: 22px; background: white; padding: 10px 18px; font-weight: 700; cursor: pointer; }
+    .controls button[type="submit"] { background: #111; color: white; }
+    @media (max-width: 420px) { .word { min-height: 62px; font-size: .72rem; } main { padding-top: 22px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Puzzle For Arden</h1>
+    <p class="instructions">Create four groups of four!</p>
+    <section id="groups" aria-live="polite"></section>
+    <div id="grid" role="group" aria-label="Puzzle words"></div>
+    <p id="status" role="status"></p>
+    <form class="controls" id="controls">
+      <button type="button" id="shuffle">Shuffle</button>
+      <button type="button" id="deselect">Deselect all</button>
+      <button type="submit">Submit</button>
+    </form>
+  </main>
+  <div id="celebration" aria-hidden="true"></div>
+  <script>
+    const categories = [{"name": "Coffee Drink Preparation Terms:", "words": ["roast", "blend", "filter", "steam"]}, {"name": "Dungeons & Dragons Terms:", "words": ["campaign", "tavern", "party", "loot"]}, {"name": "Crafting Terms:", "words": ["pearl", "needle", "glue", "cut"]}, {"name": "Types of Balls:", "words": ["pickle", "foot", "basket", "base"]}];
+    const grid = document.querySelector('#grid');
+    const groups = document.querySelector('#groups');
+    const status = document.querySelector('#status');
+    const selected = new Set();
+    const solved = new Set();
+    let mistakes = 0;
+    let words = categories.flatMap(category => category.words);
+    const colors = ['yellow', 'green', 'blue', 'purple'];
+
+    function shuffleWords(items) {
+      for (let index = items.length - 1; index > 0; index -= 1) {
+        const swapIndex = Math.floor(Math.random() * (index + 1));
+        [items[index], items[swapIndex]] = [items[swapIndex], items[index]];
+      }
+      return items;
+    }
+
+    function render() {
+      grid.replaceChildren();
+      words.filter(word => !solved.has(word)).forEach(word => {
+        const button = document.createElement('button');
+        button.className = 'word' + (selected.has(word) ? ' selected' : '');
+        button.textContent = word;
+        button.type = 'button';
+        button.setAttribute('aria-pressed', selected.has(word));
+        button.addEventListener('click', () => toggle(word));
+        grid.append(button);
+      });
+    }
+
+    function toggle(word) {
+      if (selected.has(word)) selected.delete(word);
+      else if (selected.size < 4) selected.add(word);
+      render();
+    }
+
+    function submitGuess(event) {
+      event.preventDefault();
+      if (selected.size !== 4) { status.textContent = 'Select four words first.'; return; }
+      const match = categories.find(category => category.words.every(word => selected.has(word)) && !solved.has(category.words[0]));
+      if (!match) {
+        mistakes += 1;
+        status.textContent = `Not quite. Mistakes: ${mistakes} / 4`;
+        selected.clear();
+        render();
+        if (mistakes >= 4) endGame(false);
+        return;
+      }
+      const index = categories.indexOf(match);
+      match.words.forEach(word => solved.add(word));
+      const group = document.createElement('div');
+      group.className = `group ${colors[index]}`;
+      group.innerHTML = `<strong>${match.name}</strong>${match.words.join(', ')}`;
+      groups.append(group);
+      selected.clear();
+      render();
+      if (solved.size === 16) endGame(true);
+      else status.textContent = `${solved.size / 4} of 4 groups found.`;
+    }
+
+    function endGame(won) {
+      status.textContent = won ? 'Perfect! You found all four groups.' : 'Game over. Refresh to try again.';
+      document.querySelectorAll('.word, .controls button').forEach(button => button.disabled = true);
+      if (won) celebrate();
+      else disappoint();
+    }
+
+    function celebrate() {
+      const celebration = document.querySelector('#celebration');
+      const confettiColors = ['#f9df6d', '#a0c35a', '#b0c4ef', '#ba81c5', '#f27d52'];
+      const message = document.createElement('div');
+      message.id = 'celebration-message';
+      message.textContent = 'Perfect!';
+      celebration.append(message);
+      for (let index = 0; index < 110; index += 1) {
+        const piece = document.createElement('span');
+        piece.className = 'confetti';
+        piece.style.left = `${Math.random() * 100}%`;
+        piece.style.backgroundColor = confettiColors[index % confettiColors.length];
+        piece.style.transform = `rotate(${Math.random() * 360}deg)`;
+        piece.style.animationDelay = `${Math.random() * .45}s`;
+        celebration.append(piece);
+      }
+      for (let index = 0; index < 10; index += 1) {
+        const balloon = document.createElement('span');
+        balloon.className = 'balloon';
+        balloon.style.left = `${5 + Math.random() * 90}%`;
+        balloon.style.backgroundColor = confettiColors[index % confettiColors.length];
+        balloon.style.color = balloon.style.backgroundColor;
+        balloon.style.animationDelay = `${Math.random() * .5}s`;
+        celebration.append(balloon);
+      }
+      cheer();
+      window.setTimeout(() => celebration.replaceChildren(), 2400);
+    }
+
+    function cheer() {
+      try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const gain = audioContext.createGain();
+        gain.connect(audioContext.destination);
+        gain.gain.setValueAtTime(.0001, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(.18, audioContext.currentTime + .03);
+        gain.gain.exponentialRampToValueAtTime(.0001, audioContext.currentTime + 1.25);
+        const cheer = audioContext.createOscillator();
+        cheer.type = 'sawtooth';
+        cheer.frequency.setValueAtTime(330, audioContext.currentTime);
+        cheer.frequency.linearRampToValueAtTime(660, audioContext.currentTime + .22);
+        cheer.frequency.linearRampToValueAtTime(520, audioContext.currentTime + .7);
+        cheer.connect(gain);
+        cheer.start();
+        cheer.stop(audioContext.currentTime + 1.25);
+        window.setTimeout(() => audioContext.close(), 1500);
+      } catch (error) {}
+    }
+
+    function disappoint() {
+      const celebration = document.querySelector('#celebration');
+      const message = document.createElement('div');
+      message.id = 'disappointment-message';
+      message.innerHTML = '<span class="sad-face">:(</span>Better luck next time';
+      celebration.append(message);
+      horn();
+      window.setTimeout(() => celebration.replaceChildren(), 2800);
+    }
+
+    function horn() {
+      try {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const gain = audioContext.createGain();
+        gain.connect(audioContext.destination);
+        gain.gain.setValueAtTime(.0001, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(.22, audioContext.currentTime + .04);
+        gain.gain.exponentialRampToValueAtTime(.0001, audioContext.currentTime + 1.1);
+        const horn = audioContext.createOscillator();
+        horn.type = 'square';
+        horn.frequency.setValueAtTime(180, audioContext.currentTime);
+        horn.frequency.linearRampToValueAtTime(120, audioContext.currentTime + .85);
+        horn.connect(gain);
+        horn.start();
+        horn.stop(audioContext.currentTime + 1.1);
+        window.setTimeout(() => audioContext.close(), 1400);
+      } catch (error) {}
+    }
+
+    document.querySelector('#shuffle').addEventListener('click', () => {
+      shuffleWords(words); render();
+    });
+    document.querySelector('#deselect').addEventListener('click', () => { selected.clear(); render(); });
+    document.querySelector('#controls').addEventListener('submit', submitGuess);
+    shuffleWords(words);
+    render();
+  </script>
+</body>
+</html>
